@@ -2,7 +2,7 @@ import numpy as np
 from math import sqrt
 
 # define network
-N = 5;
+N = 20;
 A = np.random.randint(0,5,size=(N,N)) # A(l,k): weight of edge directed from l to k
 A = A / np.sum(A,axis=0)
 
@@ -10,8 +10,8 @@ A = A / np.sum(A,axis=0)
 M = 20;
 w = np.random.randint(low=0,high=10,size=(M,1))
 # make w sparse
-mask = np.random.randint(low=0,high=2,size=(M,1))
-w = w * mask
+# mask = np.random.randint(low=0,high=2,size=(M,1))
+# w = w * mask
 
 #  collect data from every agent
 #  every agent probes the model
@@ -32,16 +32,18 @@ for k in range(0,N):
 # diffusion-adaptation
 mu = 0.1
 w_est_prev = np.random.randn(N,M)
+phi = np.copy(w_est_prev)
 w_est = np.zeros(shape=(N,M)) # hold estimates
 
 for i in range(M,Nt):
     for k in range(0,N):
-        phi = np.zeros(shape=(M,1));
+        w_est[k,:] = np.zeros(shape=(1,M))
+        uki = np.expand_dims(np.flip(U[k,i-M+1:i+1]),0)  
+        phi[k,:] = w_est_prev[k,:] + mu* np.squeeze(uki.transpose() @ (D[k,i] - uki @ np.expand_dims(w_est_prev[k,:],-1)))      
         for l in range(0,N):
-            phi = phi + A[l,k] * np.expand_dims(w_est_prev[l,:],-1)
-        uki = np.expand_dims(np.flip(U[k,i-M+1:i+1]),0)
+            w_est[k,:] += A[l,k] * phi[l,:]
         w_est_prev[k,:] = w_est[k,:]
-        w_est[k,:] = np.squeeze(phi + mu* uki.transpose() @ (D[k,i] - uki @ phi))
+            
 
 # diffusion-adaptation with sparsity
 mu = 0.1
@@ -58,5 +60,4 @@ for i in range(M,Nt):
         reg_term = np.diag(1/(np.abs(w_est_prev[k,:])+1e-2)) @ np.sign(np.expand_dims(w_est_prev[l,:],-1))
         w_est_prev[k,:] = w_est[k,:]
         w_est[k,:] = np.squeeze(phi + mu* uki.transpose() @ (D[k,i] - uki @ phi) - mu*lamda*reg_term)
-
 
