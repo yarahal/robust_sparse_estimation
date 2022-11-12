@@ -47,7 +47,8 @@ class Network:
             for k in range(0,self.N):
                 w_est[k,:] = np.zeros(shape=(1,self.M))
                 uki = np.expand_dims(np.flip(self.U[k,i-self.M+1:i+1]),0)  
-                phi[k,:] = w_est_prev[k,:] + mu* np.squeeze(uki.transpose() @ (self.D[k,i] - uki @ np.expand_dims(w_est_prev[k,:],-1)))      
+                grad = -np.squeeze(uki.transpose() @ (self.D[k,i] - uki @ np.expand_dims(w_est_prev[k,:],-1)))      
+                phi[k,:] = w_est_prev[k,:] - mu* grad
                 for l in range(0,self.N):
                     w_est[k,:] += self.A[l,k] * phi[l,:]
                 w_est_prev[k,:] = w_est[k,:]
@@ -67,7 +68,27 @@ class Network:
                 w_est[k,:] = np.zeros(shape=(1,self.M))
                 uki = np.expand_dims(np.flip(self.U[k,i-self.M+1:i+1]),0)  
                 reg_term = np.diag(1/(np.abs(w_est_prev[k,:])+1e-2)) @ np.sign(np.expand_dims(w_est_prev[l,:],-1))
-                phi[k,:] = w_est_prev[k,:] + mu* np.squeeze(uki.transpose() @ (self.D[k,i] - uki @ np.expand_dims(w_est_prev[k,:],-1)))  - mu*lamda*reg_term    
+                grad = -np.squeeze(uki.transpose() @ (self.D[k,i] - uki @ np.expand_dims(w_est_prev[k,:],-1)))
+                phi[k,:] = w_est_prev[k,:] - mu*grad   - mu*lamda*reg_term    
+                for l in range(0,self.N):
+                    w_est[k,:] += self.A[l,k] * phi[l,:]
+                w_est_prev[k,:] = w_est[k,:]
+        
+        return w_est
+    
+    def atc_robust(self,mu):
+        # diffusion-adaptation with l1 norm
+        self.mu = mu
+        w_est_prev = np.random.randn(self.N,self.M)
+        phi = np.copy(w_est_prev)
+        w_est = np.zeros(shape=(self.N,self.M)) # hold estimates
+
+        for i in range(self.M,self.Nt):
+            for k in range(0,self.N):
+                w_est[k,:] = np.zeros(shape=(1,self.M))
+                uki = np.expand_dims(np.flip(self.U[k,i-self.M+1:i+1]),0)  
+                grad = np.squeeze(np.sign(self.D(k,i)-uki @ np.expand_dims(w_est_prev[k,:],-1)) * (-uki))
+                phi[k,:] = w_est_prev[k,:] - mu * grad 
                 for l in range(0,self.N):
                     w_est[k,:] += self.A[l,k] * phi[l,:]
                 w_est_prev[k,:] = w_est[k,:]
