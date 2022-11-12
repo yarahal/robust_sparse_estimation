@@ -1,0 +1,171 @@
+%% Define network
+
+N = 5;
+A = randi(5,N,N); % A(l,k): weight of edge directed from l to k
+A = A./sum(A,1);
+
+%% Define model
+
+M = 10;
+w = randi(10,M,1);
+
+% make w sparse
+z = randi(2,M,1) - 1;
+w = w.*z;
+
+%% Data collection
+
+% every agent probes the model
+var_v = 0.1;
+Nt = 100;
+U = zeros(N,Nt);
+D = zeros(N,Nt);
+for k = 1:N
+    uk = randn(1,Nt);
+    dk = zeros(1,Nt);
+    vk = sqrt(var_v)*randn(1,Nt);
+    for i = M:Nt
+%         wmodf = w+randn(M,1);
+        uki = flip(uk(i-M+1:i));
+        dk(i) = uki*w + vk(i);
+    end 
+    U(k,:) = uk;
+    D(k,:) = dk;
+end
+
+%% Diffusion-Adaptation
+
+mu = 0.1;
+w_est_prev = randn(N,M);
+w_est = zeros(N,M);
+
+for i = M:Nt
+    for k = 1:N
+        phi = zeros(M,1);
+        for l = 1:N
+            phi = phi + A(l,k)*w_est_prev(l,:)';
+        end
+        uki = flip(U(k,i-M+1:i));
+        w_est_prev(k,:) = w_est(k,:);
+        w_est(k,:) = phi + mu*uki'*(D(k,i)-uki*phi);
+    end
+end
+
+%% Diffusion-Adaptation (ATC)
+
+mu = 0.1;
+w_est_prev = randn(N,M);
+phi = w_est_prev;
+w_est = zeros(N,M);
+
+for i = M:Nt
+    for k = 1:N
+        w_est(k,:) = zeros(1,M);
+        uki = flip(U(k,i-M+1:i));
+        phi(k,:) = w_est_prev(k,:) + mu*uki * (D(k,i) - uki * w_est_prev(k,:)');
+        for l = 1:N
+            w_est(k,:) = w_est(k,:) + A(l,k)*phi(l,:);
+        end
+        w_est_prev(k,:) = w_est(k,:);
+    end
+end
+
+w1 = w_est;
+
+%% Robust Diffusion-Adaptation (2)
+
+mu = 0.1;
+w_est_prev = randn(N,M);
+phi = w_est_prev;
+w_est = zeros(N,M);
+
+for i = M:Nt
+    for k = 1:N
+        w_est(k,:) = zeros(1,M);
+        uki = flip(U(k,i-M+1:i));
+        phi(k,:) = w_est_prev(k,:) + mu*uki * (D(k,i) - uki * w_est_prev(k,:)');
+        for l = 1:N
+            w_est(k,:) = w_est(k,:) + A(l,k)*phi(l,:);
+        end
+        w_est_prev(k,:) = w_est(k,:);
+    end
+end
+
+w1 = w_est;
+
+
+
+
+%% Robust Diffusion-Adaptation
+
+mu = 0.1;
+parm_est_prev = randn(N,Nt+M);
+phi = parm_est_prev;
+parm_est = zeros(N,Nt+M);
+t = 1;
+
+for i = M:Nt
+    for k = 1:N
+        parm_est(k,:) = zeros(1,Nt+M);
+        uki = flip(U(k,i-M+1:i));
+        grad = zeros(1,Nt+M);
+        grad(i) = 1-1/(t*(-D(k,i)+uki*parm_est_prev(k,Nt+1:end)'+parm_est_prev(k,i)))-1/(t*(D(k,i)-uki*parm_est_prev(k,Nt+1:end)'+parm_est_prev(k,i)));
+        for m = 1:M
+            grad(m+Nt) = -(uki(m))/(t*(-D(k,i)+uki*parm_est_prev(k,Nt+1:end)'+parm_est_prev(k,i)))+(uki(m))/(t*(D(k,i)-uki*parm_est_prev(k,Nt+1:end)'+parm_est_prev(k,i)));
+        end
+        phi(k,:) = parm_est_prev(k,:) - mu*grad;
+        for l = 1:N
+            parm_est(k,:) = parm_est(k,:) + A(l,k)*phi(l,:);
+        end
+        parm_est_prev(k,:) = parm_est(k,:);
+    end
+end
+
+%% Diffusion-Adaptation with Sparsity
+
+mu = 0.1;
+lambda = 1e-3;
+w_est_prev = randn(N,M);
+w_est = zeros(N,M);
+
+for i = M:Nt
+    for k = 1:N
+        phi = zeros(M,1);
+        for l = 1:N
+            phi = phi + A(l,k)*w_est_prev(l,:)';
+        end
+        uki = flip(U(k,i-M+1:i));
+        reg_term = diag(1./(abs(w_est_prev(k,:))+1e-2))*sign(w_est_prev(k,:)');
+        w_est_prev(k,:) = w_est(k,:);
+        w_est(k,:) = phi + mu*uki'*(D(k,i)-uki*phi)-mu*lambda*reg_term;
+    end
+end
+
+
+%% Diffusion-Adaptation with Structured Sparsity
+
+mu = 0.1;
+lambda = 1e-3;
+w_est_prev = randn(N,M);
+phi = w_est_prev;
+w_est = zeros(N,M);
+
+for i = M:Nt
+    for k = 1:N
+        w_est(k,:) = zeros(1,M);
+        uki = flip(U(k,i-M+1:i));
+        reg_term = zeros(1,M);
+        for m = 1:M
+            s = sum(w_est_prev(:,m).^2);
+            reg_term(1,m) = w_est_prev(k,m) / ((s+0.01)^0.5);
+        end
+        phi(k,:) = w_est_prev(k,:) + mu*uki * (D(k,i) - uki * w_est_prev(k,:)') - mu*lambda*reg_term;
+        for l = 1:N
+            w_est(k,:) = w_est(k,:) + A(l,k)*phi(l,:);
+        end
+        w_est_prev(k,:) = w_est(k,:);
+    end
+end
+
+
+
